@@ -119,7 +119,8 @@ def run(models: list[str], modes: list[str], *, cpu: bool, embedding: str, limit
                             "cpu_count": os.cpu_count(), "inference": "cpu-only" if cpu else "ollama default (GPU if available)"},
                "embedding_model": embedding or None, "dataset_size": len(items), "runs": []}
     for model in models:
-        rt = OllamaRuntime(url, model, ctx=4096, timeout=300, extra_options={"num_gpu": 0} if cpu else None)
+        rt = OllamaRuntime(url, model, ctx=4096, timeout=300, extra_options={"num_gpu": 0} if cpu else None,
+                           think=get_settings().slm_think)
         set_runtime(rt)
         t0 = time.perf_counter()
         try:

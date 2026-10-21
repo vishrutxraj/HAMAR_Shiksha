@@ -11,6 +11,7 @@ returns text (or schema-validated JSON) out.
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -42,13 +43,34 @@ class SLMUnavailable(Exception):
     to a clearly labelled non-AI path."""
 
 
+def auth_headers(api_key: str | None = None) -> dict[str, str]:
+    """Bearer header for a remote runtime behind an authenticating proxy (HS_SLM_API_KEY)."""
+    key = api_key if api_key is not None else get_settings().slm_api_key
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
+
+_REASONING = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def strip_reasoning(text: str) -> str:
+    """Drop inline <think>...</think> blocks some reasoning models put in the answer. An unclosed
+    block (cut off by the token limit) is dropped too: reasoning is never shown or validated."""
+    text = _REASONING.sub("", text)
+    start = text.lower().find("<think>")
+    if start != -1:
+        text = text[:start]
+    return text.strip()
+
+
 class OllamaRuntime:
     name = "ollama"
 
-    def __init__(self, url: str, model: str, *, ctx: int, timeout: float, extra_options: dict | None = None):
+    def __init__(self, url: str, model: str, *, ctx: int, timeout: float, extra_options: dict | None = None,
+                 api_key: str | None = None, think: bool | None = None):
         self.url, self.model, self.ctx = url.rstrip("/"), model, ctx
         self.extra_options = extra_options or {}  # e.g. {"num_gpu": 0} to force CPU-only inference
-        self.client = httpx.Client(timeout=timeout)
+        self.think = think  # None = field not sent (see Settings.slm_think)
+        self.client = httpx.Client(timeout=timeout, headers=auth_headers(api_key))
 
     def generate(self, messages: list[dict], *, max_tokens: int, temperature: float,
                  schema: dict | None = None, model: str | None = None) -> GenResult:
@@ -57,6 +79,8 @@ class OllamaRuntime:
                             "seed": 7, **self.extra_options}}
         if schema is not None:
             body["format"] = schema
+        if self.think is not None:
+            body["think"] = self.think
         t0 = time.perf_counter()
         try:
             r = self.client.post(f"{self.url}/api/chat", json=body)
@@ -65,7 +89,7 @@ class OllamaRuntime:
         if r.status_code != 200:
             raise SLMUnavailable(f"SLM runtime error {r.status_code}: {r.text[:200]}")
         d = r.json()
-        text = (d.get("message") or {}).get("content", "").strip()
+        text = strip_reasoning((d.get("message") or {}).get("content", ""))
         res = GenResult(text=text, model=d.get("model", body["model"]), runtime=self.name,
                         latency_ms=int((time.perf_counter() - t0) * 1000),
                         prompt_tokens=d.get("prompt_eval_count"), completion_tokens=d.get("eval_count"),
@@ -89,9 +113,9 @@ class LlamaCppRuntime:
 
     name = "llamacpp"
 
-    def __init__(self, url: str, model: str, *, timeout: float):
+    def __init__(self, url: str, model: str, *, timeout: float, api_key: str | None = None):
         self.url, self.model = url.rstrip("/"), model
-        self.client = httpx.Client(timeout=timeout)
+        self.client = httpx.Client(timeout=timeout, headers=auth_headers(api_key))
 
     def generate(self, messages, *, max_tokens, temperature, schema=None, model=None) -> GenResult:
         body = {"model": model or self.model, "messages": messages, "max_tokens": max_tokens,
@@ -195,7 +219,8 @@ def get_runtime():
     if _runtime is None:
         s = get_settings()
         if s.slm_runtime == "ollama":
-            _runtime = OllamaRuntime(s.slm_url, s.slm_model, ctx=s.slm_context_tokens, timeout=s.slm_timeout_seconds)
+            _runtime = OllamaRuntime(s.slm_url, s.slm_model, ctx=s.slm_context_tokens, timeout=s.slm_timeout_seconds,
+                                     think=s.slm_think)
         elif s.slm_runtime == "llamacpp":
             _runtime = LlamaCppRuntime(s.slm_url, s.slm_model, timeout=s.slm_timeout_seconds)
         elif s.slm_runtime == "anthropic" and s.anthropic_api_key:

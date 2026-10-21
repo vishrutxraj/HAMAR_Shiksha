@@ -8,6 +8,8 @@ argon2-cffi>=23.1
 openpyxl>=3.1
 python-multipart>=0.0.9
 httpx>=0.27
+# Vector index for hybrid retrieval (also used with remote embeddings, HS_EMBEDDING_MODEL=ollama:bge-m3)
+numpy>=1.26
 pdfplumber>=0.11
 # PostgreSQL driver (hosted database, e.g. Neon on Vercel); unused with SQLite
 psycopg[binary]>=3.1

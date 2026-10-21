@@ -1,0 +1,61 @@
+# Render Blueprint: HAMAR SHIKSHA test run (demo data) with the model on a Colab GPU.
+# Guide: docs/DEPLOY_RENDER.md. Render > New > Blueprint > pick this repo; it asks for the three
+# values marked `sync: false`. Render has no India region and no GPU: demo data only.
+#
+# Plans: `free` web services sleep after 15 minutes idle, have 512 MB RAM and a disk that is wiped on
+# every restart; the free database expires after 30 days. For a smoother demo use a paid web plan.
+services:
+  - type: web
+    name: hamar-shiksha
+    runtime: docker
+    plan: free
+    region: singapore            # closest to India; cannot be changed later
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PORT                # the image listens on 8000 (Render's default would be 10000)
+        value: "8000"
+      - key: WEB_CONCURRENCY     # one worker fits a 512 MB instance; raise on bigger plans
+        value: "1"
+      - key: HS_DATABASE_URL
+        fromDatabase:
+          name: hamar-db
+          property: connectionString
+      - key: HS_SECRET_KEY
+        generateValue: true
+      # "demo" (not "production"): production refuses demo data. See docs/DEPLOY_RENDER.md.
+      - key: HS_ENVIRONMENT
+        value: demo
+      - key: HS_COOKIE_SECURE
+        value: "true"
+      - key: HS_ALLOW_DEMO_DATA
+        value: "true"
+      - key: HS_SEED_DEMO            # loads the demo schools/users once; skipped when already present
+        value: "1"
+      - key: HS_ADMIN_MFA_REQUIRED
+        value: "false"
+      - key: HS_KB_DIR
+        value: /app/data/kb
+      # ---- Gyan SLM + embeddings on the Colab A100 (values printed by the notebook) ----
+      - key: HS_SLM_RUNTIME
+        value: ollama
+      - key: HS_SLM_URL
+        sync: false
+      - key: HS_SLM_API_KEY
+        sync: false
+      - key: HS_SLM_MODEL
+        value: gemma4:31b-it-q4_K_M
+      - key: HS_SLM_THINK
+        value: "false"
+      - key: HS_SLM_CONTEXT_TOKENS
+        value: "8192"
+      - key: HS_SLM_TIMEOUT_SECONDS
+        value: "300"
+      - key: HS_EMBEDDING_MODEL
+        value: ollama:bge-m3
+
+databases:
+  - name: hamar-db
+    plan: free
+    region: singapore

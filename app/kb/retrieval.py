@@ -12,6 +12,7 @@ import math
 import os
 import re
 import threading
+import time
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from app.config import get_settings
 from app.models import CurriculumChunk, CurriculumDocument, Subject
 
 log = logging.getLogger("hamar_shiksha.kb")
+VECTOR_RETRY_SECONDS = 60
 TOKEN_RE = re.compile(r"[0-9a-zऀ-ॿ]+")
 STOP = set("""a an the is are was were be to of and or in on at for with by from as it this that what which who whom
 how why when where do does did can could should would will shall may might i you he she we they my your our their its
@@ -78,7 +80,11 @@ class _Index:
         self.avgdl = 1.0
         self.vectors = None  # numpy array aligned with ids, or None
         self.faiss = None
+        self.retry_vectors_at: float | None = None
         self.lock = threading.Lock()
+
+    def _retry_due(self) -> bool:
+        return self.retry_vectors_at is not None and time.monotonic() >= self.retry_vectors_at
 
     # ---------------------------------------------------------------- build --
     def ensure(self, db: Session) -> None:
@@ -86,10 +92,10 @@ class _Index:
         approved = db.scalar(select(func.count(CurriculumDocument.id)).where(
             CurriculumDocument.approval_status == "approved"))
         key = tuple(key) + (approved, get_settings().embedding_model)  # withdrawal invalidates the index
-        if key == self.key:
+        if key == self.key and not self._retry_due():
             return
         with self.lock:
-            if key == self.key:
+            if key == self.key and not self._retry_due():
                 return
             rows = db.execute(
                 select(CurriculumChunk, CurriculumDocument, Subject)
@@ -114,6 +120,10 @@ class _Index:
                 }
             self.avgdl = (sum(self.lens) / len(self.lens)) if self.lens else 1.0
             self.vectors = _load_or_build_vectors(self.ids, self.texts, self.meta)
+            # Embedding server unreachable (e.g. the Colab GPU is down): serve keyword results now, but
+            # try again after a minute instead of staying keyword-only until the process restarts.
+            self.retry_vectors_at = (time.monotonic() + VECTOR_RETRY_SECONDS
+                                     if get_settings().embedding_model and self.ids and self.vectors is None else None)
             self.faiss = None
             # numpy search is fast enough for tens of thousands of passages; FAISS is opt-in (HS_USE_FAISS=1)
             if self.vectors is not None and os.environ.get("HS_USE_FAISS") == "1":
@@ -181,9 +191,11 @@ def _embed_ollama(name: str, texts: list[str]):
     import httpx
     import numpy as np
 
+    from app.slm.runtime import auth_headers
+
     out = []
     try:
-        with httpx.Client(timeout=300) as client:
+        with httpx.Client(timeout=300, headers=auth_headers()) as client:
             for i in range(0, len(texts), 32):
                 r = client.post(f"{get_settings().slm_url.rstrip('/')}/api/embed",
                                 json={"model": name, "input": texts[i:i + 32]})

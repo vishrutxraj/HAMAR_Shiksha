@@ -8,9 +8,19 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_SECRET = "dev-only-insecure-secret-change-me"
+
+
+def normalize_database_url(url: str) -> str:
+    """Hosted PostgreSQL (Render, Heroku, Neon) hands out postgres:// or postgresql:// URLs, which
+    SQLAlchemy would route to the psycopg2 driver. This project ships psycopg 3."""
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
 
 
 class Settings(BaseSettings):
@@ -58,6 +68,13 @@ class Settings(BaseSettings):
     # inference - never the default) or "none" (offline templates only).
     slm_runtime: str = "ollama"
     slm_url: str = "http://127.0.0.1:11434"
+    # Bearer token for a remote runtime behind an authenticating proxy (e.g. the Colab GPU
+    # server in colab/). Sent to generation and embedding calls; empty = no Authorization header.
+    slm_api_key: str | None = None
+    # Ollama "think" switch for reasoning models (Gemma 4, Qwen 3...). Reasoning tokens would use up
+    # slm_max_tokens and leave an empty answer, so a deployment using such a model sets this false.
+    # None = do not send the field (models without a thinking mode, e.g. llama3.2).
+    slm_think: bool | None = None
     slm_model: str = "llama3.2:3b"
     slm_context_tokens: int = 4096
     slm_max_tokens: int = 700
@@ -94,6 +111,16 @@ class Settings(BaseSettings):
 
     # Password reset delivery: "log" (development) or an integration name.
     notifier: str = "log"
+
+    @field_validator("slm_think", mode="before")
+    @classmethod
+    def _empty_think_is_unset(cls, v):
+        return None if isinstance(v, str) and not v.strip() else v
+
+    @field_validator("database_url")
+    @classmethod
+    def _database_url(cls, v: str) -> str:
+        return normalize_database_url(v)
 
     @property
     def is_production(self) -> bool:

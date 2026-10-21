@@ -50,7 +50,7 @@ Everything Render needs is in `render.yaml` (a Blueprint): service, database, en
 
 | Concern | What happens |
 |---|---|
-| Port | Render defaults to 10000; the image listens on 8000, so the blueprint sets `PORT=8000`. |
+| Port | Render gives the container `PORT` (default 10000) and checks that port. The image now listens on `$PORT` (8000 when unset, as in docker compose). Do not set `PORT` yourself. |
 | Database URL | Render provides `postgresql://...`; `app/config.py` rewrites it to `postgresql+psycopg://` (psycopg 3). |
 | Migrations / demo data | `docker/entrypoint.sh` runs migrations on every boot and `seed-demo` when `HS_SEED_DEMO=1`; seeding is skipped when the data already exists. |
 | Workers | `WEB_CONCURRENCY=1` for the 512 MB free instance (the image defaults to 2). |
@@ -89,7 +89,7 @@ State `state.admin` / `Demo@State2026`; district `district.raipur` / `Demo@Distr
 |---|---|
 | Deploy fails: "Refusing to start in production" | `HS_ENVIRONMENT` was set to `production`; use `demo` for this test. |
 | Log says `Out of memory (used over 512Mi)` | The full demo data set was being seeded. Keep `HS_DEMO_SCALE=compact`, or move the service to a paid plan with more RAM. |
-| Deploy stays "in progress", no open port | `PORT` is not 8000, or the seed is still running (watch the logs; the first boot is slowest). |
+| "Waiting for internal health check ... :10000/api/health" never ends | The app is listening on a different port than Render checks. Open the service's Environment tab and delete any `PORT` variable you or an older blueprint added, then redeploy. Also confirm the logs reach `Application startup complete`. |
 | `/api/health` 500 | Database not reachable yet; redeploy after the database shows "Available". |
 | Gyan answers are textbook passages labelled non-AI | Render cannot reach Colab: notebook stopped, URL/token stale (step 6), or the tunnel was recreated. Check `https://<tunnel>/health`. |
 | 401/403 in the Colab proxy log | Wrong token in `HS_SLM_API_KEY`. |

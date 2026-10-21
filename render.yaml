@@ -14,8 +14,6 @@ services:
     healthCheckPath: /api/health
     autoDeployTrigger: commit
     envVars:
-      - key: PORT                # the image listens on 8000 (Render's default would be 10000)
-        value: "8000"
       - key: WEB_CONCURRENCY     # one worker fits a 512 MB instance; raise on bigger plans
         value: "1"
       - key: HS_DATABASE_URL

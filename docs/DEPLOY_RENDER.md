@@ -54,9 +54,16 @@ Everything Render needs is in `render.yaml` (a Blueprint): service, database, en
 | Database URL | Render provides `postgresql://...`; `app/config.py` rewrites it to `postgresql+psycopg://` (psycopg 3). |
 | Migrations / demo data | `docker/entrypoint.sh` runs migrations on every boot and `seed-demo` when `HS_SEED_DEMO=1`; seeding is skipped when the data already exists. |
 | Workers | `WEB_CONCURRENCY=1` for the 512 MB free instance (the image defaults to 2). |
+| Demo data size | `HS_DEMO_SCALE=compact` (about 1,100 users, 57 schools, 33 districts). The `full` set (about 3,000 students) peaks near 550 MB while seeding, so a 512 MB instance is killed ("Out of memory (used over 512Mi)") before it ever opens a port. |
+| Accounts file | The seed also writes `docs/DEMO_ACCOUNTS.md`; the image has no `docs/` folder, so that write is now skipped instead of aborting the boot. Use the accounts below. |
 | Environment name | `HS_ENVIRONMENT=demo`. `production` refuses demo data, so a demo cannot use it. API docs (`/api/docs`) stay reachable in `demo`. |
 | Health check | `healthCheckPath: /api/health` (also touches the database). |
 | Reasoning model | `HS_SLM_THINK=false` stops Gemma 4 spending the answer budget on hidden reasoning. |
+
+## Demo logins on Render (compact data)
+
+State `state.admin` / `Demo@State2026`; district `district.raipur` / `Demo@District2026`; teacher `demo-t-001` /
+`Demo@Teacher2026`; student `st-demo01` / `Demo@Student26`. (`docs/DEMO_ACCOUNTS.md` lists the full set.)
 
 ## Limits of the free plan (check Render's current terms)
 
@@ -81,6 +88,7 @@ Everything Render needs is in `render.yaml` (a Blueprint): service, database, en
 | Symptom | Likely cause / fix |
 |---|---|
 | Deploy fails: "Refusing to start in production" | `HS_ENVIRONMENT` was set to `production`; use `demo` for this test. |
+| Log says `Out of memory (used over 512Mi)` | The full demo data set was being seeded. Keep `HS_DEMO_SCALE=compact`, or move the service to a paid plan with more RAM. |
 | Deploy stays "in progress", no open port | `PORT` is not 8000, or the seed is still running (watch the logs; the first boot is slowest). |
 | `/api/health` 500 | Database not reachable yet; redeploy after the database shows "Available". |
 | Gyan answers are textbook passages labelled non-AI | Render cannot reach Colab: notebook stopped, URL/token stale (step 6), or the tunnel was recreated. Check `https://<tunnel>/health`. |

@@ -33,6 +33,8 @@ services:
         value: "true"
       - key: HS_SEED_DEMO            # loads the demo schools/users once; skipped when already present
         value: "1"
+      - key: HS_DEMO_SCALE           # "full" (33 districts, ~3,000 students) peaks above 512 MB while seeding
+        value: compact
       - key: HS_ADMIN_MFA_REQUIRED
         value: "false"
       - key: HS_KB_DIR

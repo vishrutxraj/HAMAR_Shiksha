@@ -51,3 +51,12 @@ def test_vectors_are_retried_after_the_embedding_server_was_down(db, monkeypatch
     index.retry_vectors_at = 0.0          # back-off elapsed
     index.ensure(db)
     assert len(calls) == 2 and index.vectors is not None and index.retry_vectors_at is None
+
+
+def test_demo_accounts_doc_is_optional(monkeypatch, tmp_path):
+    """The container image has no docs/ folder: writing the accounts list must not abort the seed."""
+    from app import demo_seed
+
+    monkeypatch.setattr(demo_seed, "DEMO_ACCOUNTS_DOC", tmp_path / "missing-folder" / "DEMO_ACCOUNTS.md")
+    monkeypatch.setattr(demo_seed.get_settings(), "environment", "development")
+    demo_seed.write_demo_accounts({"Raipur": {"teacher": "DEMO-T-001", "school": "S"}})  # no exception

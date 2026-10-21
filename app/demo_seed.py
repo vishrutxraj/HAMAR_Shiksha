@@ -682,7 +682,10 @@ def write_demo_accounts(district_logins: dict) -> None:
             lines.append(f"| {d.name} ({d.name_hi}) | `district.{district_slug(d.name)}` | `{acc['teacher']}` | "
                          f"`{acc.get('student', 'st-demo01')}` | {acc['school']} |")
         lines.append("")
-    DEMO_ACCOUNTS_DOC.write_text("\n".join(lines), encoding="utf-8")
+    try:
+        DEMO_ACCOUNTS_DOC.write_text("\n".join(lines), encoding="utf-8")
+    except OSError:  # container image: no docs/ folder and a read-only app directory; the data is already committed
+        pass
 
 
 DEMO_MANIFEST = Path(__file__).resolve().parent.parent / "data" / "demo_curriculum" / "manifest.json"
